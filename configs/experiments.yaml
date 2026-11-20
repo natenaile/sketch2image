@@ -1,0 +1,25 @@
+# Sketches: put image1..image4 (any of .jpg/.jpeg/.png) in sketches/ and describe each one.
+# The subject says WHAT is drawn; a style phrase is appended to build the prompt.
+sketches:
+  image1: "DESCRIBE IMAGE 1, e.g. a cozy wooden cabin by a lake"
+  image2: "DESCRIBE IMAGE 2"
+  image3: "DESCRIBE IMAGE 3"
+  image4: "DESCRIBE IMAGE 4"
+
+styles:
+  photoreal: "professional photograph, realistic materials, natural light, highly detailed, sharp focus"
+  watercolor: "watercolor painting, loose brush strokes, soft pastel washes, textured paper"
+  concept_art: "digital concept art, cinematic lighting, dramatic atmosphere, highly detailed"
+  render3d: "3D render, Blender, studio lighting, soft shadows, smooth materials"
+
+seed: 42
+fast_steps: 4                      # main Lightning setting
+lightning_steps: [2, 4, 8]         # Table 1
+full_steps: 30
+full_guidance: 7.0
+img2img_strengths: [0.6, 0.85]     # Table 3 baselines (run with full SDXL)
+overcond:                          # Table 4 / Fig. 3 (Lightning 4-step)
+  reduced_scale: 0.6
+  early_stop: 0.5                  # ControlNet active for the first 50% of the steps
+strength_sweep: [0.2, 0.4, 0.6, 0.8, 1.0, 1.2, 1.5]   # Fig. 5 (Lightning 4-step)
+extra_seeds: [1, 2]                # seed variability (with `seed` = 3 seeds)
