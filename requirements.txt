@@ -1,0 +1,16 @@
+# PyTorch: install the CUDA build for your machine from https://pytorch.org (already present on Colab)
+torch>=2.1
+diffusers>=0.30
+transformers>=4.40
+accelerate>=0.30
+safetensors>=0.4
+huggingface_hub>=0.23
+opencv-python-headless>=4.8
+scikit-image>=0.21
+numpy
+pillow
+pandas
+matplotlib
+pyyaml
+gradio>=4.40
+peft>=0.11
