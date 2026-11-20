@@ -1,98 +1,148 @@
-# Bringing Sketches to Life: fast vs full SDXL with ControlNet
+# Bringing Sketches to Life ✏️ → 🖼️
+### Sketch-Conditioned Image Generation with SDXL and ControlNet: Distilled versus Full Sampling
 
-This project turns hand-drawn sketches into images with **SDXL + a scribble ControlNet**, and compares two ways of sampling the same model:
+**Natenaile Asmamaw Shiferaw** · Machine Learning and Computer Vision, Generative AI Project · Supervisor: Arezoo Ghodsifard
 
-- **Fast:** SDXL-Lightning, a distilled model that needs 2–8 steps, a few seconds per image.
-- **Quality:** full SDXL with 30 steps and classifier-free guidance.
+📄 **[Read the report (PDF)](Shiferaw_Sketch2Image_Report.pdf)** &nbsp;·&nbsp;
+🎬 **[Watch the demo video](https://drive.google.com/file/d/1Up2tXEdKSTdNJ91mkKPbO_LScTOth5p0/view?usp=sharing)** &nbsp;·&nbsp;
+🚀 **[Run it on Colab](notebooks/colab_demo.ipynb)**
 
-The question is how much sketch preservation and style control is lost when the model is about 7× faster.
+This project turns line drawings into detailed images that keep the drawing's structure. **SDXL** is conditioned on the sketch through a **scribble ControlNet**, and a text prompt chooses the content and style. The project compares two ways of sampling the *same* model:
 
-```
-sketch2image/
-├── sketch2image/
-│   ├── preprocess.py   # photo of a pencil sketch -> clean white-on-black ControlNet map
-│   ├── pipeline.py     # SDXL + ControlNet, Lightning LoRAs as switchable adapters, baselines
-│   ├── metrics.py      # sketch recall / precision / Chamfer (edge-based), CLIP score
-│   └── viz.py          # report figures (grids with grouped headers, sweep plot)
-├── configs/experiments.yaml   # sketch descriptions, styles, all experiment settings
-├── run_experiments.py         # runs everything, writes report-ready figures + tables
-├── app.py                     # Gradio web app (draw/upload -> image, fast or quality mode)
-├── notebooks/colab_demo.ipynb # one-click run on a free Colab T4
-├── sketches/                  # image1..image4: my own hand-drawn sketches
-└── tests/                     # CPU tests for preprocessing and the metric
-```
+- ⚡ **SDXL-Lightning**, a distilled model: 4 steps, **3.3 s** per image
+- 🎨 **Full SDXL**: 30 steps with classifier-free guidance, **28 s** per image
 
-## 1. Method
+The question is how much structure and style control is lost when generation is **8.5× faster**.
 
-**Preprocessing.** ControlNet expects white strokes on black. A phone photo of a pencil drawing is converted in five steps:
-1. grayscale;
-2. flatten the lighting (divide by a large Gaussian blur);
-3. adaptive threshold;
-4. remove specks smaller than 20 px;
-5. crop with a 6 % border, resize to 1024 px on the long side (both sides multiples of 8), and dilate the strokes by 2 px.
+![Main results](outputs/report/fig2_main_grid.png)
+<sub>**Four sketches, two sampling regimes, two styles.** Every output keeps the layout of its drawing. Full SDXL produces a convincing watercolor, while Lightning's watercolor looks like a faded photo. Below each image: sketch recall R and CLIP score.</sub>
 
-**Generation.** All outputs come from one copy of the SDXL weights:
+---
 
-| Component | Model |
+## 🔍 Key results (Tesla T4, 4 sketches, 88 images)
+
+| Method | Time / image | Sketch recall R ↑ | CLIP score ↑ |
+|---|---|---|---|
+| Text only (no sketch) | 19.2 s | 0.69 | 33.4 |
+| img2img (SDEdit, s = 0.6) | 12.5 s | 0.98 | 29.3 *(still a line drawing)* |
+| **ControlNet + SDXL-Lightning (4 steps)** | **3.3 s** | 0.85 | 32.9 |
+| **ControlNet + full SDXL (30 steps)** | 28.0 s | **0.90** | **34.3** |
+
+- **ControlNet is the only method that keeps the sketch *and* follows the prompt.**
+- **Lightning keeps most of the structure but follows styles less strongly.** It runs without classifier-free guidance, so the CLIP gap is largest for watercolor (+2.4).
+- **Conditioning scale λ = 0.8–1.0 gives the best balance.** Above that, prompt adherence drops.
+- **Over-conditioning (strokes copied as outlines) did not occur** with SDXL and the xinsir ControlNet, so the default setting was best.
+
+---
+
+## 🧠 How it works
+
+![Pipeline](outputs/report/fig0_pipeline.png)
+
+1. **Preprocessing:** a photo or scan of a drawing is turned into a clean white-on-black control map. The steps are illumination correction, adaptive threshold, speck removal, and resizing to 1024 px.
+
+   ![Preprocessing](outputs/report/fig1_preprocessing.png)
+
+2. **Generation:** ControlNet reads the control map and adds its features to the frozen SDXL UNet at every denoising step. The sketch sets the *layout*; the prompt sets *materials, light and style*.
+3. **Sampling:** one SDXL model, two regimes. **Lightning** loads the 2/4/8-step LoRA, uses an Euler sampler with trailing timesteps, and runs with no guidance. **Full SDXL** uses UniPC with 30 steps and guidance scale 7.
+4. **Evaluation:**
+   - **Sketch recall R:** the share of sketch strokes that reappear as edges in the image, within half a stroke width plus 0.5 % of the image size.
+   - **Chamfer distance:** the mean distance in pixels from the strokes to the nearest edge.
+   - **CLIP score:** how well the image matches the prompt.
+
+### Prompts
+Each prompt is a **subject description + style suffix**. For example:
+> *"a classic retro motorcycle in side view, round headlight, teardrop fuel tank, flat leather seat, chrome exhaust pipe, finned engine, spoked wheels, parked on a street,* **professional photograph, realistic materials, natural light, highly detailed, sharp focus**"
+
+| Style | Suffix |
 |---|---|
-| Base model | [`stabilityai/stable-diffusion-xl-base-1.0`](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) |
-| VAE (fp16-safe) | [`madebyollin/sdxl-vae-fp16-fix`](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix) |
-| ControlNet | [`xinsir/controlnet-scribble-sdxl-1.0`](https://huggingface.co/xinsir/controlnet-scribble-sdxl-1.0) |
-| Fast sampling | [`ByteDance/SDXL-Lightning`](https://huggingface.co/ByteDance/SDXL-Lightning) 2/4/8-step LoRAs, Euler scheduler with "trailing" timesteps, CFG 0 |
-| Full sampling | LoRA disabled, UniPC scheduler, 30 steps, CFG 7 |
-| Evaluation | [`openai/clip-vit-base-patch32`](https://huggingface.co/openai/clip-vit-base-patch32) |
+| Photorealistic | professional photograph, realistic materials, natural light, highly detailed, sharp focus |
+| Watercolor | watercolor painting, loose brush strokes, soft pastel washes, textured paper |
+| Concept art | digital concept art, cinematic lighting, dramatic atmosphere, highly detailed |
+| 3D render | 3D render, Blender, studio lighting, soft shadows, smooth materials |
 
-The three Lightning LoRAs are loaded as named adapters and switched on and off for each image. The fast and full results therefore differ only in sampling, not in the base model or the ControlNet.
+All four subject descriptions are in [`configs/experiments.yaml`](configs/experiments.yaml).
 
-**How the sketch steers the image.** ControlNet is a trainable copy of the UNet encoder that reads the sketch map. At every denoising step, its features are added to the frozen UNet through zero-initialised 1×1 convolutions. This pushes the image's edges onto the strokes. The text prompt still sets colour, material, light and style. The **conditioning scale** sets how strongly the sketch is enforced. **control_end** sets the fraction of steps during which ControlNet is active.
+---
 
-**Metrics.**
-- *Sketch recall*: the share of sketch-skeleton pixels that have a Canny edge in the output within 2 % of the image size.
-- *Edge precision*: the share of output edges that lie on the sketch. A low value means detail was added.
-- *Chamfer distance*: the mean pixel distance from the strokes to the nearest output edge.
-- *CLIP score*: 100 × the cosine similarity between the image and the prompt.
+## 🧪 Experiments
 
-## 2. Experiments (88 images on 4 sketches)
+### Does the sketch matter? Baselines vs ControlNet
+![Baselines](outputs/report/fig4_baselines.png)
+<sub>Without the sketch, the model invents a different scene. img2img keeps the drawing itself. ControlNet keeps the layout *and* renders realistic materials.</sub>
 
-| Report item | Question | Settings |
-|---|---|---|
-| Fig. 2 + Table 2 | Does each mode keep the sketch and follow the style? | 4 styles × {Lightning 4-step, full SDXL} |
-| Table 1 | Speed vs quality | Lightning 2 / 4 / 8 steps vs full 30 steps |
-| Fig. 4 + Table 3 | Does the sketch matter? | text only, img2img (0.6, 0.85), ControlNet fast / full |
-| Fig. 3 + Table 4 | Fixing over-conditioning (pencil lines copied as outlines) | strength 1.0 vs 0.6 vs ControlNet stopped at 50 % |
-| Fig. 5 | Effect of sketch strength | conditioning scale 0.2 → 1.5 |
-| Text | Seed variability | 3 seeds |
+### Over-conditioning: can loosening the sketch help?
+![Over-conditioning](outputs/report/fig3_overconditioning.png)
+<sub>Lowering the scale (λ = 0.6) or stopping ControlNet halfway (e = 0.5) only reduced structure. The model starts adding its own content, such as a city skyline behind the tower.</sub>
 
-## 3. Install and run
+### How strong should the sketch be?
+<img src="outputs/report/fig5_strength_sweep.png" width="560">
 
-The easiest way is **Colab**. Open `notebooks/colab_demo.ipynb`, choose a T4 GPU, upload this repo as a zip and your sketches `image1`–`image4`, describe them, and run all cells. It takes about 40 minutes, including about 10 GB of model downloads.
+<sub>Recall rises steadily with λ. Prompt adherence (CLIP) holds steady up to λ = 0.8, then drops.</sub>
 
-To run locally (needs a CUDA GPU with at least 12 GB):
+### Speed vs quality
+
+| Regime | Steps | Time (s) | Recall R | CLIP |
+|---|---|---|---|---|
+| SDXL-Lightning | 2 | 2.0 | 0.82 | 32.5 |
+| SDXL-Lightning | **4** | **3.3** | **0.85** | 32.9 |
+| SDXL-Lightning | 8 | 5.9 | 0.81 | 33.6 |
+| Full SDXL | 30 | 28.0 | 0.90 | 34.3 |
+
+All tables, with standard deviations, are in [`outputs/report/tables.md`](outputs/report/tables.md).
+
+---
+
+## 🖥️ Interactive app
+
+Draw or upload a sketch, describe it, pick a style and **Fast** or **Quality** mode. The app shows the control map, the result and its sketch-recall score. 🎬 [Demo video](https://drive.google.com/file/d/1Up2tXEdKSTdNJ91mkKPbO_LScTOth5p0/view?usp=sharing)
+
+![App](outputs/report/fig7_app.png)
+
+```bash
+python app.py --share     # prints a public gradio.live link (works from Colab)
+```
+
+---
+
+## ⚙️ Reproduce
+
+**Easiest:** open [`notebooks/colab_demo.ipynb`](notebooks/colab_demo.ipynb) in Google Colab, select a **T4 GPU**, and run the cells. It takes about 40 minutes, including about 10 GB of model downloads.
+
+**Locally** (CUDA GPU with at least 12 GB):
 ```bash
 pip install -r requirements.txt
-python tests/test_preprocess_metrics.py        # CPU check, no downloads
+python tests/test_preprocess_metrics.py        # CPU sanity check, no downloads
 python run_experiments.py --preprocess-only    # check the cleaned sketches
-python run_experiments.py                      # everything; resumes if interrupted
-python app.py --share                          # web app
+python run_experiments.py                      # all experiments (resumes if interrupted)
+python run_experiments.py --recompute-metrics  # re-score saved images, rebuild figures/tables (no GPU)
 ```
-Outputs: `outputs/report/` contains `fig1`–`fig5`, `tables.md` (Tables 1–4 plus the seed sentence), the CSV files and `settings.md` (GPU and library versions). `outputs/all_results.csv` has one row per image with all settings and metrics. Every image uses a fixed seed (42; seeds 1 and 2 for the variability test).
+Settings: fp16, 1024 px, seed 42. The experiment plan is in `configs/experiments.yaml`. Settings, time and metrics for every image are in `outputs/all_results.csv`.
 
-## 4. References
+### Repository structure
+```
+├── app.py                     # Gradio web app
+├── run_experiments.py         # runs all experiments, writes figures + tables
+├── configs/experiments.yaml   # sketch descriptions, styles, experiment settings
+├── sketch2image/
+│   ├── preprocess.py          # drawing → control map
+│   ├── pipeline.py            # SDXL + ControlNet, Lightning LoRA adapters, baselines
+│   ├── metrics.py             # sketch recall / precision / Chamfer, CLIP score
+│   └── viz.py                 # report figures
+├── notebooks/colab_demo.ipynb # one-click reproduction on Colab
+├── sketches/                  # the four input drawings
+├── tests/                     # CPU tests for preprocessing and the metric
+└── outputs/                   # figures, tables, per-image results
+```
 
-**Models:** listed in the table in section 1. SDXL and SDXL-Lightning are under the OpenRAIL++ license; xinsir ControlNet under Apache-2.0.
+---
+
+## 📚 References
+
+**Models (Hugging Face):** [SDXL base 1.0](https://huggingface.co/stabilityai/stable-diffusion-xl-base-1.0) · [SDXL VAE fp16-fix](https://huggingface.co/madebyollin/sdxl-vae-fp16-fix) · [xinsir ControlNet scribble SDXL](https://huggingface.co/xinsir/controlnet-scribble-sdxl-1.0) · [SDXL-Lightning](https://huggingface.co/ByteDance/SDXL-Lightning) · [CLIP ViT-B/32](https://huggingface.co/openai/clip-vit-base-patch32)
+
 **Libraries:** [diffusers](https://github.com/huggingface/diffusers), [transformers](https://github.com/huggingface/transformers), [peft](https://github.com/huggingface/peft), PyTorch, [Gradio](https://github.com/gradio-app/gradio), OpenCV, scikit-image, pandas, matplotlib.
 
-**Papers**
-- Podell et al., *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*, ICLR 2024.
-- Lin, Wang & Yang, *SDXL-Lightning: Progressive Adversarial Diffusion Distillation*, arXiv:2402.13929, 2024.
-- Zhang, Rao & Agrawala, *Adding Conditional Control to Text-to-Image Diffusion Models* (ControlNet), ICCV 2023.
-- Rombach et al., *High-Resolution Image Synthesis with Latent Diffusion Models*, CVPR 2022.
-- Ho & Salimans, *Classifier-Free Diffusion Guidance*, 2022.
-- Meng et al., *SDEdit*, ICLR 2022.
-- Zhao et al., *UniPC*, NeurIPS 2023.
-- Hu et al., *LoRA*, ICLR 2022.
-- Radford et al., *CLIP*, ICML 2021.
-- Hessel et al., *CLIPScore*, EMNLP 2021.
+**Papers:** Podell et al., *SDXL*, ICLR 2024 · Zhang, Rao & Agrawala, *ControlNet*, ICCV 2023 · Lin, Wang & Yang, *SDXL-Lightning*, arXiv:2402.13929 · Rombach et al., *Latent Diffusion*, CVPR 2022 · Ho & Salimans, *Classifier-Free Guidance*, 2022 · Meng et al., *SDEdit*, ICLR 2022 · Zhao et al., *UniPC*, NeurIPS 2023 · Hu et al., *LoRA*, ICLR 2022 · Radford et al., *CLIP*, ICML 2021 · Hessel et al., *CLIPScore*, EMNLP 2021. The full list is in the [report](Shiferaw_Sketch2Image_Report.pdf).
 
-**Sketches:** `image1`–`image4` were drawn by me for this project.
-**AI assistance:** parts of the code and documentation were drafted with an AI assistant (Claude, Anthropic). I ran all experiments, checked the code and results, and can explain every component.
+**AI assistance:** an AI assistant (Claude, Anthropic) was used to support code development and to edit the report. The author ran all experiments and is responsible for the results.
