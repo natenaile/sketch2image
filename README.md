@@ -145,4 +145,4 @@ Settings: fp16, 1024 px, seed 42. The experiment plan is in `configs/experiments
 
 **Papers:** Podell et al., *SDXL*, ICLR 2024 · Zhang, Rao & Agrawala, *ControlNet*, ICCV 2023 · Lin, Wang & Yang, *SDXL-Lightning*, arXiv:2402.13929 · Rombach et al., *Latent Diffusion*, CVPR 2022 · Ho & Salimans, *Classifier-Free Guidance*, 2022 · Meng et al., *SDEdit*, ICLR 2022 · Zhao et al., *UniPC*, NeurIPS 2023 · Hu et al., *LoRA*, ICLR 2022 · Radford et al., *CLIP*, ICML 2021 · Hessel et al., *CLIPScore*, EMNLP 2021. The full list is in the [report](Shiferaw_Sketch2Image_Report.pdf).
 
-**AI assistance:** an AI assistant (Claude, Anthropic) was used to support code development and to edit the report. The author ran all experiments and is responsible for the results.
+
