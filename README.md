@@ -5,7 +5,6 @@
 
 📄 **[Read the report (PDF)](Shiferaw_Sketch2Image_Report.pdf)** &nbsp;·&nbsp;
 🎬 **[Watch the demo video](https://drive.google.com/file/d/1Up2tXEdKSTdNJ91mkKPbO_LScTOth5p0/view?usp=sharing)** &nbsp;·&nbsp;
-🚀 **[Run it on Colab](notebooks/colab_demo.ipynb)**
 
 This project turns line drawings into detailed images that keep the drawing's structure. **SDXL** is conditioned on the sketch through a **scribble ControlNet**, and a text prompt chooses the content and style. The project compares two ways of sampling the *same* model:
 
